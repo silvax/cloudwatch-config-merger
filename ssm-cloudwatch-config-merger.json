@@ -1,0 +1,70 @@
+{
+  "schemaVersion": "2.2",
+  "description": "Merge two CloudWatch agent configuration files",
+  "parameters": {
+    "config1Path": {
+      "type": "String",
+      "description": "Path to the first CloudWatch agent configuration file",
+      "default": "/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json"
+    },
+    "config2Path": {
+      "type": "String",
+      "description": "Path to the second CloudWatch agent configuration file",
+      "default": "/tmp/new-cloudwatch-config.json"
+    },
+    "outputPath": {
+      "type": "String",
+      "description": "Path to save the merged CloudWatch agent configuration file",
+      "default": "/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent-merged.json"
+    },
+    "restartAgent": {
+      "type": "String",
+      "description": "Whether to restart the CloudWatch agent after merging (yes/no)",
+      "default": "yes",
+      "allowedValues": [
+        "yes",
+        "no"
+      ]
+    }
+  },
+  "mainSteps": [
+    {
+      "action": "aws:downloadContent",
+      "name": "downloadScript",
+      "inputs": {
+        "sourceType": "GitHub",
+        "sourceInfo": "{\"owner\":\"YOUR_GITHUB_USERNAME\", \"repository\":\"cloudwatch-config-merger\", \"path\":\"merge_cloudwatch_configs.py\", \"getOptions\":\"branch:main\"}",
+        "destinationPath": "/tmp/merge_cloudwatch_configs.py"
+      }
+    },
+    {
+      "action": "aws:runShellScript",
+      "name": "runMergeScript",
+      "inputs": {
+        "runCommand": [
+          "chmod +x /tmp/merge_cloudwatch_configs.py",
+          "python3 /tmp/merge_cloudwatch_configs.py \"{{ config1Path }}\" \"{{ config2Path }}\" \"{{ outputPath }}\""
+        ]
+      }
+    },
+    {
+      "action": "aws:runShellScript",
+      "name": "restartCloudWatchAgent",
+      "precondition": {
+        "StringEquals": [
+          "{{ restartAgent }}",
+          "yes"
+        ]
+      },
+      "inputs": {
+        "runCommand": [
+          "if command -v amazon-cloudwatch-agent-ctl &> /dev/null; then",
+          "  amazon-cloudwatch-agent-ctl -a fetch-config -m ec2 -s -c file:{{ outputPath }}",
+          "else",
+          "  echo \"CloudWatch agent control script not found. Please install the CloudWatch agent or restart it manually.\"",
+          "fi"
+        ]
+      }
+    }
+  ]
+}
